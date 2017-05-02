@@ -1,0 +1,31 @@
+---
+groups:
+  # group name
+  moderators:
+    # allowed commands
+    - halt
+  admins:
+    - hello
+    - stats
+  owners:
+    - restart
+users:
+  admin_user:
+    groups:
+      - moderators
+      - admins
+      - owners
+  mod_user_1:
+    groups:
+      - moderators
+  mod_user_2:
+    groups:
+      - moderators
+  mod_user_3:
+    groups:
+      - moderators
+  mod_user_4:
+    groups:
+      - moderators
+...
+

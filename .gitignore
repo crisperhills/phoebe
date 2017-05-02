@@ -1,0 +1,14 @@
+*.c
+*.flv
+*.log
+*.out
+*.pyc
+*.sh
+*.yaml
+!examples/*.yaml
+__pycache__
+cruft
+filters/*.py
+idlebg.*
+pidfile
+player_pidfile

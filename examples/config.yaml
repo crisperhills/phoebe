@@ -1,0 +1,75 @@
+---
+### Global settings ###
+# process name to assign to the bot when running
+name: mybot
+## below options typically need not be adjusted 
+control_socket_file: sock-mybot
+log_level: ERROR
+
+### ICanHazChat API interaction settings ###
+ICHCAPI:
+  # ICHC credentials with which to join the room
+  app_username: mybot
+  api_key: my_ichc_api_key
+  # room on ICHC to join
+  room_to_join: mybot
+  ## below options typically need not be adjusted 
+  # how often to poll the API for new data (CAREFUL)
+  polling_interval: 2.0
+  # how many times to try to reconnect to the API after a disconnect event
+  polling_retry_count: 10
+  # how long to wait between reconnect attempts
+  polling_retry_interval: 5.0
+  # how long to wait for an HTTP response before timing out
+  http_timeout: 2.0
+  # how many times to attempt to rejoin the room
+  api_rejoin_retry_count: 10
+  # ICHC API entrypoint
+  entrypoint_url: https://www.icanhazchat.com/api.ashx
+  max_receipt_delay: 3600
+
+### ICHC API response processing settings ###
+MessageProcessor:
+  # modify only when issues arise parsing API output for commands or stream IDs
+  command_regex: ^\w+\|(?P<user>\w+):\s+!(?P<command>\w+.*)$
+  stream_id_regex: 'stream: (?P<stream_id>\S+)$'
+
+### Media player management settings ###
+PlayerManager:
+  # the minimum rating for a media item to continue playing
+  min_request_rating: -1
+  ## below options typically need not be adjusted 
+  # how long to wait between queries to the player process for a state change
+  player_state_change_delay: .2
+  # how many times to poll for a state change before declaring a dead process
+  player_state_change_timeout: 750
+  # how long to wait between checks of the queue for new items
+  queue_check_interval: 1
+  # how long a media item can remain queued before requiring a refetch when played
+  site_media_info_max_age: 300
+  control_socket_file: sock-mybot
+
+### Player runtime settings ###
+SquishPlayer:
+  # the ICHC RTMP endpoint to stream to
+  output_rtmp_baseurl: rtmp://broadcast.icanhazchat.com/ichc
+  # the RTMP stream ID to fall back to in case we fail to get one from the API
+  output_rtmp_default_stream_id: your_default_stream_id
+  ## below options typically need not be adjusted 
+  control_socket_file: sock-mybot
+  decode_buffer_size: 5000000
+  output_audio_bitrate: 112
+  output_audio_channels: 2
+  output_audio_samplerate: 44100
+  output_video_bitrate: 350
+  output_video_frame_height: 480
+  output_video_frame_width: 640
+  output_video_framerate: 30/1
+  
+### Media request settigs ###
+PlayRequest:
+  # the name of the filter (in filters/) to use for keyword searches, without the ".py"
+  search_filter: your_search_filter_module
+  # the location of the youtube-dl executable to use for media URL retrieval
+  ydl_bin: /usr/bin/youtube-dl
+...

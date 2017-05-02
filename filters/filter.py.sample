@@ -1,0 +1,30 @@
+from lxml import etree
+from random import randrange
+from urllib import quote_plus
+
+def get_uri(httpsession, search_terms):
+  
+  # use the supplied httpsession instance to query a site
+  search_response = httpsession.request(
+  'GET', search_url, params={
+    'search_keyword_parameter': quote_plus(search_terms),
+    'other_param_1': 'other_value_1',
+    'other_param_2': 'other_value_2'
+  },
+  timeout=5.0)
+  # get response body as string
+  content = search_response.content
+  
+  # extract a media URL from the response body
+
+  # your code here
+  # your code here
+  # your code here
+
+  # return a nonzero exit code on error, with a error string
+  if some_error_condition == True:
+    error = 'your error message'
+    return [1, error]
+
+  # return 0 and the URL on success
+  return [0, result_url]
