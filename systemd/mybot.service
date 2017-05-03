@@ -1,0 +1,14 @@
+[Unit]
+Description=Pheobe Bot Instance "mybot"
+After=syslog.target network.target
+
+[Service]
+Environment=GIO_EXTRA_MODULES=/usr/lib64/gio/modules/
+Type=simple
+User=mybot
+WorkingDirectory=/opt/bots/mybot
+ExecStart=/opt/bots/mybot/run.py
+ExecStop=/usr/bin/pkill mybot
+
+[Install]
+WantedBy=multi-user.target
