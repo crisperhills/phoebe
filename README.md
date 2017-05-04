@@ -1,5 +1,26 @@
 phoebe is an adaptive, transcoding media robot for ICHC.
 
+## Features ##
+
+*TBD*
+
+## Installation and Usage ##
+
+### ICHC Account Requirements ###
+
+* phoebe connects using the ICHC API and the ICHC RTMP endpoint, both features available only to supporters. Thus, the account you configure the bot to use must be a supporter account.
+* You'll likely encounter unexpected behavior trying to log in to the same channel with the same account the bot is connected with, and messages will appear in random places and the overall function of the bot is likely to break down. Thus, a dedicated account is necessary.
+
+### Installation ###
+
+TBD
+
+### Commands ###
+
+TBD
+
+## Development ##
+
 ### Architecture ###
 
 * Asynchronous event handling with [Circuits](http://circuitsframework.com/)
@@ -40,12 +61,7 @@ phoebe is an adaptive, transcoding media robot for ICHC.
 * **permissions.yaml** -- example permissions configuration file
 * **run.py** -- main runtime
 
-### ICHC Account Requirements ###
-
-* phoebe connects using the ICHC API and the ICHC RTMP endpoint, both features available only to supporters. Thus, the account you configure the bot to use must be a supporter account.
-* You'll likely encounter unexpected behavior trying to log in to the same channel with the same account the bot is connected with, and messages will appear in random places and the overall function of the bot is likely to break down. Thus, a dedicated account is necessary.
-
-### Basic installation instructions ###
+### Basic installation instructions (devel) ###
 
 1. Ensure **Python 2.7+** is installed and updated.
 2. Compile and install **gstreamer** for your platform, along with the _base_, _good_, _bad_, and _ugly_ plugin packages, taking care to observe the following requirements when running `./configure`:
