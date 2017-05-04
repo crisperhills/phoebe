@@ -16,6 +16,8 @@ ICHCAPI:
   ## below options typically need not be adjusted 
   # how often to poll the API for new data (CAREFUL)
   polling_interval: 2.0
+  # the maximum interval the bot will throttle back to when chat is idle
+  max_polling_interval: 10.0
   # how many times to try to reconnect to the API after a disconnect event
   polling_retry_count: 10
   # how long to wait between reconnect attempts
