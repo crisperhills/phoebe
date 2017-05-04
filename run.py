@@ -13,7 +13,7 @@ import logging
 
 '''phoebe'''
 PROCTITLE = 'phoebe'
-VERSION = 'v2.1.2'
+VERSION = 'v2.2.0'
 
 logging.basicConfig(
     filename='phoebe.log',
