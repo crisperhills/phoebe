@@ -14,14 +14,14 @@ Plays media from most [sites supported](https://rg3.github.io/youtube-dl/support
 ### Installation ###
 
 1. Ensure **Python 2.7+** is installed and updated.
-2. Compile from source and install (or install from packages, if the PyGObject/GLib support mentioned later are included) **gstreamer** for your platform, along with the _base_, _good_, _bad_, and _ugly_ plugin packages, taking care to observe the following requirements when running `./configure`:
+2. Compile from source and install **gstreamer** for your platform (or install it from packages, if the PyGObject/GLib support mentioned later are included), along with the _base_, _good_, _bad_, and _ugly_ plugin packages, taking care to observe the following requirements when running `./configure`:
     * If compiling from source:
         * Compile all packages with support for **GObject introspection**, and **GLib asserts**.
         * *Optional:* Ensure **orc** is installed for orc optimization support (modest performance bump).
 3. Compile from source and install (or install from packages) the gstreamer **libva** plugins at the same version as those gsteamer packages previously installed.
 4. Install **youtube-dl**; take note of where the executable is placed (e.g., `which youtube-dl`)
 5. Create a directory for phoebe to run, then extract the contents of the latest release archive into that directory.
-6. Copy `config.yaml` and `permissions.yaml` and modify to fit your installation.
+6. Copy `config.yaml` and `permissions.yaml` from `examples/` and modify them to fit your installation.
 7. Ensure all files in the directory are owned by the same user that will run the application.
 8. Run phoebe with `./run.py`, or see the `systemd` directory for more information on setting up the bot as a service.
 
