@@ -25,8 +25,11 @@ class ICHCAPI(BaseComponent):
         self.roomname = self.shm['config']['ICHCAPI']['room_to_join']
         self.url = self.shm['config']['ICHCAPI']['entrypoint_url']
         self.shm['state']['ICHCAPI'] = {
+            'last_action': '',
+            'last_interval': self.shm['config']['ICHCAPI']['polling_interval'],
             'last_query': 0,
             'last_receipt': 0,
+            'no_messages': False,
             'api_join_attempts': 0,
             'room_joined': False,
             'rejoining': False,
@@ -61,6 +64,8 @@ class ICHCAPI(BaseComponent):
             # no actions; simply receive any new message from the API
             action = ['recv']
 
+        delay = self.shm['config']['ICHCAPI']['polling_interval']
+
         if action:
             requeue = True
             # process only join requests when not joined
@@ -80,17 +85,35 @@ class ICHCAPI(BaseComponent):
                 # put back actions we're not ready to execute
                 self.actionqueue.appendleft(action)
             elif not discard:
+                self.shm['state']['ICHCAPI']['last_action'] = action[0]
                 self.shm['state']['ICHCAPI']['last_query'] = time()
                 # send in line
                 self._query_api_from_action(action)
 
                 self.shm['stats']['ICHCAPI']['api_requests'] += 1
 
+                # throttle if we recv'd last time and got no new messages
+                if (
+                    action[0] == 'recv' and
+                    self.shm['state']['ICHCAPI']['last_action'] == 'recv' and
+                    self.shm['state']['ICHCAPI']['no_messages'] is True
+                ):
+                    delay = self.shm['state']['ICHCAPI']['last_interval']
+                    if (
+                        self.shm['state']['ICHCAPI']['last_interval'] <
+                        self.shm['config']['ICHCAPI']['max_polling_interval']
+                    ):
+                        delay += 1.0
+                        logging.warning(
+                            "throttling API polling to {}s".format(delay))
+
         self.http_poll_timer = Timer(
-            float(self.shm['config']['ICHCAPI']['polling_interval']),
+            float(delay),
             events.do_process_next_action(),
             self.channel
         ).register(self)
+
+        self.shm['state']['ICHCAPI']['last_interval'] = delay
 
     # NON-HANDLER METHODS ##############################################
 
@@ -160,6 +183,9 @@ class ICHCAPI(BaseComponent):
             self.shm['state']['ICHCAPI']['join_lock'] = False
 
         response_text = content.replace('\r', '').split('\n')
+        if len(response_text):
+            if response_text[-1] == '':
+                del response_text[-1]
         for idx, line in enumerate(response_text):
             # print '{}: {}'.format(idx, line)
             if idx == 0:
@@ -196,12 +222,7 @@ class ICHCAPI(BaseComponent):
                     self.parent.msgproc.channel
                 )
             else:
-                delay = time() - self.shm['state']['ICHCAPI']['last_receipt']
-                max_delay = self.shm['config']['ICHCAPI']['max_receipt_delay']
-                if delay > max_delay:
-                    reason = 'no messages received for {} seconds'.format(
-                        max_delay)
-                    self._join_or_shutdown(reason)
+                self.shm['state']['ICHCAPI']['no_messages'] = True
 
     # ON-DEMAND EVENT HANDLERS #########################################
 
