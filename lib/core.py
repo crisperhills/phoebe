@@ -448,7 +448,7 @@ class MessageProcessor(BaseComponent):
 
     @handler('command_received')
     def _dispatch_command(self, raw_sender, raw_command):
-        command_string = raw_command.strip().lower()
+        command_string = raw_command.strip()
         sender = raw_sender.strip().lower()
         logging.debug(
             "received command string '{}' from sender {}".format(
