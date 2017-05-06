@@ -19,8 +19,10 @@ class c_stats(Event):
 
 
 class c_say(Event):
-    help_text = "**!say** &mdash; 'twas brillig, and the slithy toves did "
-    "gyre and gimble in the wabe"
+    help_text = ' '.join([
+        "**!say** &mdash; 'twas brillig, and the slithy toves did",
+        "gyre and gimble in the wabe"
+    ])
     restricted = True
 
 
