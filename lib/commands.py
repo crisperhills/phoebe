@@ -18,6 +18,12 @@ class c_stats(Event):
     restricted = True
 
 
+class c_say(Event):
+    help_text = "**!say** &mdash; 'twas brillig, and the slithy toves did "
+    "gyre and gimble in the wabe"
+    restricted = True
+
+
 class c_commands(Event):
     help_text = '**!commands** &mdash; list all unprivileged commands'
 
@@ -394,3 +400,12 @@ class CommandExecutor(BaseComponent):
                 events.do_send_message(msg),
                 self.parent.ichcapi.channel
             )
+
+    @handler('c_say')
+    def _cmd_say(self, sender, command, arguments):
+        if self._allowed(sender, 'say'):
+            if len(arguments):
+                self.fire(
+                    events.do_send_message(arguments),
+                    self.parent.ichcapi.channel
+                )
