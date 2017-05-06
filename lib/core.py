@@ -233,8 +233,8 @@ class ICHCAPI(BaseComponent):
                     continue
 
                 # filter out control messages (might use later)
-                if line[0] == '[':
-                    # strip off PMs
+                if self.ctrlre.search(line):
+                    # keep PMs
                     privmsg_match = self.privmsgre.search(line)
                     if privmsg_match:
                         filtered_messages.append(
@@ -259,6 +259,7 @@ class ICHCAPI(BaseComponent):
                 self.shm['state']['ICHCAPI']['empty_recvs'] = 0
                 self.shm['state']['ICHCAPI']['last_interval'] = self.shm[
                     'config']['ICHCAPI']['polling_interval']
+                logging.info(filtered_messages)
             else:
                 self.shm['state']['ICHCAPI']['empty_recvs'] += 1
 
