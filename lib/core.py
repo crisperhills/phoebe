@@ -259,7 +259,6 @@ class ICHCAPI(BaseComponent):
                 self.shm['state']['ICHCAPI']['empty_recvs'] = 0
                 self.shm['state']['ICHCAPI']['last_interval'] = self.shm[
                     'config']['ICHCAPI']['polling_interval']
-                logging.info(filtered_messages)
             else:
                 self.shm['state']['ICHCAPI']['empty_recvs'] += 1
 
