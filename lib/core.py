@@ -22,14 +22,16 @@ class ICHCAPI(BaseComponent):
         super(ICHCAPI, self).__init__(args, kwargs)
 
         self.shm = shm
-        self.roomname = self.shm['config']['ICHCAPI']['room_to_join']
-        self.url = self.shm['config']['ICHCAPI']['entrypoint_url']
+        self.config = self.shm['config']['ICHCAPI']
+
+        self.roomname = self.config['room_to_join']
+        self.url = self.config['entrypoint_url']
         self.shm['state']['ICHCAPI'] = {
             'last_action': '',
-            'last_interval': self.shm['config']['ICHCAPI']['polling_interval'],
+            'last_interval': self.config['polling_interval'],
             'last_query': 0,
             'last_receipt': 0,
-            'no_messages': False,
+            'empty_recvs': 0,
             'api_join_attempts': 0,
             'room_joined': False,
             'rejoining': False,
@@ -44,6 +46,13 @@ class ICHCAPI(BaseComponent):
         self.actionqueue = deque([])
         self.httpsession = self.shm['httpsession']
         self.http_poll_timer = None
+
+        self.ctrlre = rexcomp(self.config['control_regex'])
+        self.privmsgre = rexcomp(self.config['privmsg_regex'])
+        self.selfmsgre = rexcomp(
+            self.config['chat_prefix_regex'] +
+            self.config['app_username']
+        )
 
         self.in_shutdown = False
 
@@ -64,7 +73,7 @@ class ICHCAPI(BaseComponent):
             # no actions; simply receive any new message from the API
             action = ['recv']
 
-        delay = self.shm['config']['ICHCAPI']['polling_interval']
+        delay = self.config['polling_interval']
 
         if action:
             requeue = True
@@ -96,15 +105,18 @@ class ICHCAPI(BaseComponent):
                 if (
                     action[0] == 'recv' and
                     self.shm['state']['ICHCAPI']['last_action'] == 'recv' and
-                    self.shm['state']['ICHCAPI']['no_messages'] is True
+                    self.shm['state']['ICHCAPI']['empty_recvs'] > (int(
+                        self.config['api_throttle_idle_timeout'] /
+                        self.config['polling_interval']) - 1)
                 ):
                     delay = self.shm['state']['ICHCAPI']['last_interval']
                     if (
-                        self.shm['state']['ICHCAPI']['last_interval'] <
-                        self.shm['config']['ICHCAPI']['max_polling_interval']
+                        delay <
+                        self.config['max_polling_interval']
                     ):
-                        delay += 1.0
-                        logging.warning(
+                        delay += self.config['api_throttle_step']
+                        self.shm['state']['ICHCAPI']['last_interval'] = delay
+                        logging.debug(
                             "throttling API polling to {}s".format(delay))
 
         self.http_poll_timer = Timer(
@@ -112,8 +124,6 @@ class ICHCAPI(BaseComponent):
             events.do_process_next_action(),
             self.channel
         ).register(self)
-
-        self.shm['state']['ICHCAPI']['last_interval'] = delay
 
     # NON-HANDLER METHODS ##############################################
 
@@ -125,12 +135,12 @@ class ICHCAPI(BaseComponent):
             data='join',
             params={
                 'v': 1,
-                'u': self.shm['config']['ICHCAPI']['app_username'],
-                'p': self.shm['config']['ICHCAPI']['api_key'],
+                'u': self.config['app_username'],
+                'p': self.config['api_key'],
                 'a': 'join',
                 'w': self.roomname
             },
-            timeout=float(self.shm['config']['ICHCAPI']['http_timeout'])
+            timeout=float(self.config['http_timeout'])
         )
 
         return response
@@ -146,7 +156,7 @@ class ICHCAPI(BaseComponent):
                 'k': self.roomkey,
                 'a': 'recv'
             },
-            timeout=float(self.shm['config']['ICHCAPI']['http_timeout'])
+            timeout=float(self.config['http_timeout'])
         )
 
         return response
@@ -166,7 +176,7 @@ class ICHCAPI(BaseComponent):
                 'a': 'send',
                 'w': message
             },
-            timeout=float(self.shm['config']['ICHCAPI']['http_timeout'])
+            timeout=float(self.config['http_timeout'])
         )
 
         self.shm['stats']['ICHCAPI']['messages_sent'] += 1
@@ -183,20 +193,20 @@ class ICHCAPI(BaseComponent):
             self.shm['state']['ICHCAPI']['join_lock'] = False
 
         response_text = content.replace('\r', '').split('\n')
-        if len(response_text):
-            if response_text[-1] == '':
-                del response_text[-1]
+
         for idx, line in enumerate(response_text):
-            # print '{}: {}'.format(idx, line)
+            # all responses must start with OK
             if idx == 0:
                 if line.strip() != 'OK':
                     error = 'non-OK response'
                     break
+            # extract room key from (successful) join response
             elif (idx == 1) and (query_type == 'join'):
                 self.shm['state']['ICHCAPI']['room_joined'] = True
                 self.shm['state']['ICHCAPI']['api_join_attempts'] = 0
                 self.roomkey = line.strip()
                 self.fire(events.room_joined(), self.channel)
+            # assume remaining lines are chat messages
             else:
                 messages.append(line)
 
@@ -211,24 +221,52 @@ class ICHCAPI(BaseComponent):
                 '{}'.format(error)
             )
 
+        filtered_messages = list()
         if not self.shm['state']['ICHCAPI']['room_joined']:
             reason = 'not joined'
             self._join_or_shutdown(reason)
-        else:
-            if len(messages):
-                self.shm['state']['ICHCAPI']['last_receipt'] = time()
+        elif len(messages):
+            self.shm['state']['ICHCAPI']['last_receipt'] = time()
+            for line in messages:
+                # filter out empty lines
+                if len(line) == 0:
+                    continue
+
+                # filter out control messages (might use later)
+                if line[0] == '[':
+                    # strip off PMs
+                    privmsg_match = self.privmsgre.search(line)
+                    if privmsg_match:
+                        filtered_messages.append(
+                            privmsg_match.group('message'))
+                    # else:
+                        # other control seqs: for now, do nothing; just skip
+                    continue
+
+                # filter out our own messages
+                if self.selfmsgre.search(line):
+                    continue
+
+                # retain all other lines yet unfiltered
+                filtered_messages.append(line)
+
+            # process anything left over (ideally just chat messages)
+            if len(filtered_messages):
                 self.fire(
-                    events.messages_received(messages),
+                    events.messages_received(filtered_messages),
                     self.parent.msgproc.channel
                 )
+                self.shm['state']['ICHCAPI']['empty_recvs'] = 0
+                self.shm['state']['ICHCAPI']['last_interval'] = self.shm[
+                    'config']['ICHCAPI']['polling_interval']
             else:
-                self.shm['state']['ICHCAPI']['no_messages'] = True
+                self.shm['state']['ICHCAPI']['empty_recvs'] += 1
 
     # ON-DEMAND EVENT HANDLERS #########################################
 
     def _join_or_shutdown(self, reason):
         # join the room if we haven't already tried too many times
-        max_attempts = self.shm['config']['ICHCAPI']['api_rejoin_retry_count']
+        max_attempts = self.config['api_rejoin_retry_count']
         api_join_attempts = self.shm['state']['ICHCAPI']['api_join_attempts']
         if api_join_attempts < max_attempts:
             remaining = max_attempts - api_join_attempts
@@ -305,8 +343,7 @@ class ICHCAPI(BaseComponent):
             request_method = getattr(self, '_send_message_request')
             query_msg = action[1]
 
-        attempts_remaining = self.shm['config'][
-            'ICHCAPI']['polling_retry_count']
+        attempts_remaining = self.config['polling_retry_count']
 
         # keep trying until we succeed or run out of retries
         while True:
@@ -328,11 +365,9 @@ class ICHCAPI(BaseComponent):
                         'error sending HTTP(S) request '
                         '({}); retrying in {} seconds'.format(
                             str(err),
-                            self.shm['config']['ICHCAPI'][
-                                'polling_retry_interval']
+                            self.config['polling_retry_interval']
                         ))
-                    sleep(self.shm['config']['ICHCAPI']
-                          ['polling_retry_interval'])
+                    sleep(self.config['polling_retry_interval'])
                     continue
                 else:
                     logging.critical(
@@ -342,9 +377,8 @@ class ICHCAPI(BaseComponent):
                     break
 
             # log message if this is a retry
-            if attempts_remaining < self.shm['config']['ICHCAPI'][
-                    'polling_retry_count']:
-                attempts = self.shm['config']['ICHCAPI'][
+            if attempts_remaining < self.config['polling_retry_count']:
+                attempts = self.config[
                     'polling_retry_count'] - attempts_remaining
                 logging.warning(
                     'retry successful after {} attempts'.format(attempts))
@@ -397,13 +431,10 @@ class MessageProcessor(BaseComponent):
     def _parse_messages(self, messages):
         # parse lines for commands
         for line in messages:
-
-            # ## DEBUG
-            # stderr.write('{}\n'.format(line))
-            # print line
-
             self.shm['stats']['MessageProcessor']['messages_received'] += 1
             cmd_match = self.cmdre.search(line)
+
+            # if we don't yet have a stream_id, check for one
             if not self.stream_id:
                 strid_match = self.stridre.search(line)
                 if strid_match:
@@ -489,6 +520,7 @@ class PlayerManager(BaseComponent):
         try:
             self.player_client.send(command)
         except IOError:
+            # DEBUG THIS BRANCH -- SEEMS TO HANG; CHECK FOR DEFUNCTS
             logging.error(
                 "IO error encountered when attempting to send to player "
                 "connection")
@@ -532,6 +564,7 @@ class PlayerManager(BaseComponent):
             try:
                 self.player_client.send(['stop'])
             except IOError:
+                # DEBUG THIS BRANCH -- SEEMS TO HANG; CHECK FOR DEFUNCTS
                 logging.error(
                     "IO error encountered when attempting to send to player "
                     "connection")
