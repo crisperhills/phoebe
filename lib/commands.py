@@ -19,10 +19,8 @@ class c_stats(Event):
 
 
 class c_say(Event):
-    help_text = ' '.join([
-        "**!say** &mdash; 'twas brillig, and the slithy toves did",
-        "gyre and gimble in the wabe"
-    ])
+    help_text = "**!say** &mdash; 'twas brillig, and the slithy toves did "
+    "gyre and gimble in the wabe"
     restricted = True
 
 
@@ -150,12 +148,16 @@ class CommandExecutor(BaseComponent):
                 quoted_commands[:-1]
             ) + ', and {}'.format(quoted_commands[-1])
             outlines = [
-                '/me responds to the commands {} &mdash; '
-                '*access-controlled commands suffixed by '
-                '** * ** *'.format(command_string),
-                '/me can tell you how any one of them works with '
-                '**!help** followed by a command name (e.g., **!help '
-                'play**).'
+                ' '.join([
+                    '/me responds to the commands {} &mdash;'.format(
+                        command_string),
+                    '* **&#42;**access-controlled commands*'
+                ]),
+                ' '.join([
+                    '/me can tell you how any one of them works with',
+                    '**!help** followed by a command name (e.g., **!help',
+                    'play**).'
+                ])
             ]
 
         if len(outlines):
@@ -167,8 +169,10 @@ class CommandExecutor(BaseComponent):
 
     @handler('c_sites')
     def _cmd_sites(self, sender, command, arguments):
-        msg = '/me can fetch media from most sites listed here: '
-        'http://bit.ly/2d9yknp'
+        msg = ' '.join([
+            '/me can fetch media from most sites listed here:',
+            'http://bit.ly/2d9yknp'
+        ])
         self.fire(
             events.do_send_message(msg),
             self.parent.ichcapi.channel
@@ -184,15 +188,22 @@ class CommandExecutor(BaseComponent):
         outlines = list()
         if not arguments:
             outlines = [
-                '/me plays videos ( **!play '
-                'http://video.site/whatever **), or searches for a '
-                'random video ( **!play search terms** ).',
-                '/me stops ( **!stop** ), jumps forward and back ( '
-                '**!ff seconds** and **!rew seconds** ), or gives '
-                'details ( **!now** ).',
-                '/me takes votes ( **!yea** and **!nay** ), and '
-                'lists all commands ( **!commands** ).'
+                ' '.join([
+                    '/me plays videos ( **!play',
+                    'http://video.site/whatever **), or searches for a',
+                    'random video ( **!play search terms** ).'
+                ]),
+                ' '.join([
+                    '/me stops ( **!stop** ), jumps forward and back (',
+                    '**!ff seconds** and **!rew seconds** ), or gives',
+                    'details ( **!now** ).'
+                ]),
+                ' '.join([
+                    '/me takes votes ( **!yea** and **!nay** ), and',
+                    'lists all commands ( **!commands** ).'
+                ])
             ]
+
         else:
             event_name = 'c_{}'.format(arguments.replace('!', ''))
             if event_name in c_events.keys():
