@@ -377,6 +377,7 @@ class Player(Thread):
             self._httpsrc.set_property('is-live', 'true')
         self._httpsrc.set_property('http-log-level', 'none')
         self._httpsrc.set_property('location', media_uri)
+        self._httpsrc.set_property('ssl-strict', 'false')
         self._dec.set_property('use-buffering', 'true')
         self._dec.set_property('low-percent', 10)
         self._dec.set_property('high-percent', 99)
