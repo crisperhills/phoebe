@@ -3,11 +3,6 @@ from circuits import BaseComponent, Event, handler
 from re import match, search
 
 
-class c_halt(Event):
-    help_text = '**!halt** &mdash; stop playback of media others have queued'
-    restricted = True
-
-
 class c_hello(Event):
     help_text = '**!hello** &mdash; generate a simple test message'
     restricted = True
@@ -109,8 +104,11 @@ class CommandExecutor(BaseComponent):
         permissions = self.shm['permissions']
         permitted = list()
         if sender in permissions['users'].keys():
+            # add explicitly-granted permissions
             for member_group in permissions['users'][sender]['groups']:
                 permitted += permissions['groups'][member_group]
+            # add control commands
+            permitted += ['stop', 'jump', 'ff', 'rew']
 
         return permitted
 
@@ -318,8 +316,11 @@ class CommandExecutor(BaseComponent):
 
     @handler('c_stop')
     def _cmd_stop(self, sender, command, arguments):
+
+        is_elevated = self._allowed(sender, 'stop')
+
         self.fire(
-            events.do_stop_current_media(sender),
+            events.do_stop_current_media(sender, is_elevated),
             self.parent.playmgr.channel
         )
 
@@ -353,8 +354,11 @@ class CommandExecutor(BaseComponent):
                 # hours
                 jump_secs += int(value) * 360
 
+        is_elevated = self._allowed(sender, 'jump')
+
         self.fire(
-            events.do_jump_current_media(sender, jump_secs),
+            events.do_jump_current_media(
+                sender, jump_secs, is_elevated),
             self.parent.playmgr.channel
         )
 
@@ -367,8 +371,12 @@ class CommandExecutor(BaseComponent):
             seek_secs = int(arguments.split(' ')[0])
         if seek_secs <= 0:
             return None
+
+        is_elevated = self._allowed(sender, 'ff')
+
         self.fire(
-            events.do_seek_current_media(sender, seek_secs),
+            events.do_seek_current_media(
+                sender, seek_secs, is_elevated),
             self.parent.playmgr.channel
         )
 
@@ -381,17 +389,14 @@ class CommandExecutor(BaseComponent):
             seek_secs = int(arguments.split(' ')[0])
         if seek_secs <= 0:
             return None
+
+        is_elevated = self._allowed(sender, 'rew')
+
         self.fire(
-            events.do_seek_current_media(sender, seek_secs * -1),
+            events.do_seek_current_media(
+                sender, seek_secs * -1, is_elevated),
             self.parent.playmgr.channel
         )
-
-    @handler('c_halt')
-    def _cmd_halt(self, sender, command, arguments):
-        if self._allowed(sender, 'halt'):
-            self.fire(
-                events.do_stop_current_media(
-                    sender, halt=True), self.parent.playmgr.channel)
 
     @handler('c_stats')
     def _cmd_stats(self, sender, command, arguments):

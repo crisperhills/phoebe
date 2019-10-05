@@ -422,6 +422,17 @@ class Player(Thread):
         logging.info('stopping pipeline')
         self._postroll()
 
+    def _get_live_position(self):
+        pos_result, pos_ns = self._pipeline.query_position(
+            Gst.Format.TIME)
+
+        position = 0
+
+        if pos_result:
+            position = long(pos_ns / Gst.SECOND)
+
+        return position
+
     def _get_position(self):
         pos_result, pos_ns = self._pipeline.query_position(
             Gst.Format.TIME)
@@ -579,6 +590,12 @@ class Player(Thread):
             return True
         else:
             return False
+
+    def get_live_play_position(self):
+        position = self._get_live_position()
+        if not position:
+            return None
+        return position
 
     def get_play_position(self):
         position = self._get_position()
@@ -757,6 +774,17 @@ def main():
             else:
                 conn.send(
                     ['ERROR', 'getpos not supported by active runtime'])
+
+        elif cmd_name == 'getlivepos':
+            if hasattr(runtime, 'get_live_play_position'):
+                pos = runtime.get_live_play_position()
+                if pos:
+                    conn.send(['OK', pos])
+                else:
+                    conn.send(['ERROR', 'no live position available'])
+            else:
+                conn.send(
+                    ['ERROR', 'getlivepos not supported by active runtime'])
 
         # seek by specified amount
         elif cmd_name == 'seek':

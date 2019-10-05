@@ -836,14 +836,14 @@ class PlayerManager(BaseComponent):
             self.stop_player()
 
     @handler('do_seek_current_media')
-    def _seek_current_media(self, sender, seek_secs):
+    def _seek_current_media(self, sender, seek_secs, is_elevated):
         if not self._media_playing():
             return None
         if not self.player_client:
             return None
         if self.current_request.live_source:
             return None
-        if sender != self.current_request.sender:
+        if sender != self.current_request.sender and not is_elevated:
             return None
 
         # send seek command, interval to player
@@ -856,14 +856,14 @@ class PlayerManager(BaseComponent):
                 'seek failed: {} seconds (from {})'.format(seek_secs, sender))
 
     @handler('do_jump_current_media')
-    def _jump_current_media(self, sender, jump_secs):
+    def _jump_current_media(self, sender, jump_secs, is_elevated):
         if not self._media_playing():
             return None
         if not self.player_client:
             return None
         if self.current_request.live_source:
             return None
-        if sender != self.current_request.sender:
+        if sender != self.current_request.sender and not is_elevated:
             return None
 
         # send jump command, target to player
@@ -876,15 +876,15 @@ class PlayerManager(BaseComponent):
                 'jump failed: {} seconds (from {})'.format(jump_secs, sender))
 
     @handler('do_stop_current_media')
-    def _stop_current_media(self, sender, halt=False):
+    def _stop_current_media(self, sender, is_elevated):
         if not self._media_playing():
             return None
         if not self.player_client:
             return None
-        if sender != self.current_request.sender and not halt:
+        if sender != self.current_request.sender and not is_elevated:
             return None
 
-        verb = 'halting' if halt else 'stopping'
+        verb = 'halting' if is_elevated else 'stopping'
 
         logging.info(
             '{} media: "{}" ({})'.format(
@@ -903,7 +903,17 @@ class PlayerManager(BaseComponent):
 
         timestamp = '~'
         if self.current_request.live_source:
-            timestamp = 'LIVE'
+            # get position from player
+            response = self._command_player(['getlivepos'])
+
+            if response:
+                if response[0] == 'OK':
+                    cur_time = response[1]
+                    pos_string = '{:d}:{:02d}'.format(
+                        *self.get_min_sec(cur_time))
+                    timestamp = "LIVE for {}".format(pos_string)
+                else:
+                    logging.error(response[1])
         else:
             # get position, duration from player
             response = self._command_player(['getpos'])
