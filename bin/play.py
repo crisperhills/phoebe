@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python2
 from multiprocessing import Value
 from multiprocessing.connection import Listener
 from os import getpid

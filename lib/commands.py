@@ -309,8 +309,10 @@ class CommandExecutor(BaseComponent):
                 if item_number < 1:
                     return False
 
+        is_elevated = self._allowed(sender, 'drop')
+
         self.fire(
-            events.do_drop_queue_item(sender, item_number),
+            events.do_drop_queue_item(sender, is_elevated, item_number),
             self.parent.playmgr.channel
         )
 

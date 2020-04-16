@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python2
 from circuits import BaseComponent, handler
 from lib.commands import CommandExecutor
 from lib.core import PlayerManager, MessageProcessor, ICHCAPI
@@ -13,7 +13,7 @@ import logging
 
 '''phoebe'''
 PROCTITLE = 'phoebe'
-VERSION = 'v2.3.2'
+VERSION = 'v2.3.3'
 
 logging.basicConfig(
     filename='phoebe.log',

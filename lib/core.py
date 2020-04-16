@@ -497,12 +497,13 @@ class PlayerManager(BaseComponent):
         try:
             filter_module = load_source(
                 filter_name, 'filters/{}.py'.format(filter_name))
-        except:
+        except Exception as e:
             error = ' '.join([
                 'error loading search filter',
                 '\'filters/{}.py\''.format(filter_name)
             ])
             logging.warning(error)
+            logging.warning(str(e))
         self.filter_module = filter_module
 
     # CONVENIENCE METHODS ##############################################
@@ -693,7 +694,7 @@ class PlayerManager(BaseComponent):
 
                     self.player_mode = 'idle'
                     self.player_process = Popen([
-                        '/usr/bin/python', 'bin/play.py', self.stream_id
+                        '/usr/bin/python2', 'bin/play.py', self.stream_id
                     ])
                 else:
                     # pop next request from queue
@@ -732,7 +733,7 @@ class PlayerManager(BaseComponent):
 
                         self.player_mode = 'media'
                         self.player_process = Popen([
-                            '/usr/bin/python',
+                            '/usr/bin/python2',
                             'bin/play.py',
                             self.stream_id,
                             self.current_request.media_uri
@@ -960,7 +961,7 @@ class PlayerManager(BaseComponent):
         self.fire(events.do_send_message(msg), self.parent.ichcapi.channel)
 
     @handler('do_drop_queue_item')
-    def _drop_queue_item(self, sender, arguments):
+    def _drop_queue_item(self, sender, is_elevated, arguments):
         if not len(self.requestqueue):
             return False
         item_number = arguments
@@ -976,7 +977,7 @@ class PlayerManager(BaseComponent):
             return False
         item_idx = item_number - 1
         # check for ownership
-        if self.requestqueue[item_idx].sender != sender:
+        if self.requestqueue[item_idx].sender != sender and not is_elevated:
             return False
         dropped_title = self.requestqueue[item_idx].title
         del self.requestqueue[item_idx]
