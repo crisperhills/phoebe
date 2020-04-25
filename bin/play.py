@@ -1,4 +1,7 @@
-#!/usr/bin/python2
+#!/usr/bin/python3
+from __future__ import division
+from __future__ import absolute_import
+from __future__ import print_function
 from multiprocessing import Value
 from multiprocessing.connection import Listener
 from os import getpid
@@ -10,12 +13,17 @@ from threading import Thread
 from yaml import safe_load as load_yaml
 import logging
 import gi
+from io import open
 
 '''phoebe-player'''
 
+# # uncomment when debugging gst
+# from os import putenv
+# putenv('GST_DEBUG', '3')
+# putenv('GST_PLUGIN_PATH', '/usr/lib/x86_64-linux-gnu/gstreamer-1.0:/usr/local/lib/gstreamer-1.0')
+
 gi.require_version('Gst', '1.0')
-from gi.repository import GObject, Gst
-GObject.threads_init()
+from gi.repository import GObject, GLib, Gst
 Gst.init(None)
 
 logging.basicConfig(
@@ -31,83 +39,38 @@ class Idler(Thread):
     def __init__(self, config, state, stream_id):
         super(Idler, self).__init__()
 
-        self._config = config
+        # self._config = config
         self._state = state
 
-        self._mainloop = GObject.MainLoop()
-
+        self._mainloop = GLib.MainLoop()
         self._pipeline = Gst.Pipeline()
 
         bus = self._pipeline.get_bus()
         bus.add_signal_watch()
-        bus.connect('message::eos', self._on_eos)
-        bus.connect('message::error', self._on_error)
-        bus.connect('message::warning', self._on_warning)
-        bus.connect('message::clock-lost', self._on_clock_lost)
-        bus.connect('message::latency', self._on_latency)
-        bus.connect('message::request-state', self._on_request_state)
         bus.connect('message::application', self._on_application)
+        bus.connect('message::segment-done', self._on_segment_done)
 
-        self.src = Gst.ElementFactory.make('multifilesrc', None)
-        self.dec = Gst.ElementFactory.make('pngdec', None)
-        self.freeze = Gst.ElementFactory.make('imagefreeze', None)
-        self.clock = Gst.ElementFactory.make('clockoverlay', None)
-        self.convert = Gst.ElementFactory.make('videoconvert', None)
-        self.enc = Gst.ElementFactory.make('x264enc', None)
+        self.src = Gst.ElementFactory.make('filesrc', None)
+        self.demux = Gst.ElementFactory.make('qtdemux', None)
         self.parse = Gst.ElementFactory.make('h264parse', None)
         self.mux = Gst.ElementFactory.make('flvmux', None)
         self.sink = Gst.ElementFactory.make('rtmpsink', None)
 
+        self.src.set_property('location', 'idlebg.mp4')
+        self.mux.set_property('streamable', 'true')
+        self.sink.set_property('location',
+                               '/'.join([config['output_rtmp_baseurl'], stream_id]))
+
         self._pipeline.add(self.src)
-        self._pipeline.add(self.dec)
-        self._pipeline.add(self.freeze)
-        self._pipeline.add(self.clock)
-        self._pipeline.add(self.convert)
-        self._pipeline.add(self.enc)
+        self._pipeline.add(self.demux)
         self._pipeline.add(self.parse)
         self._pipeline.add(self.mux)
         self._pipeline.add(self.sink)
 
-        self.src.set_property('location', 'idlebg.png')
-        self.src.set_property(
-            'caps', Gst.caps_from_string('image/png,framerate=1/1'))
+        # dynamically link demux to parse when video pad is added
+        self.demux.connect("pad-added", self._on_pad_added)
 
-        self.clock.set_property('outline-color', 4278190080)
-        self.clock.set_property('color', 4294967295)
-        self.clock.set_property('font-desc', 'DejaVu Sans Condensed 15')
-        self.clock.set_property('halignment', 'right')
-        self.clock.set_property('valignment', 'top')
-        self.clock.set_property('xpad', 12)
-        self.clock.set_property('ypad', 9)
-        self.clock.set_property('time-format', '%H:%M:%S %Z')
-
-        self.enc.set_property('tune', 'fastdecode')
-        self.enc.set_property('bitrate', config['output_video_bitrate'])
-        self.enc.set_property('bframes', 0)
-        self.enc.set_property('sliced-threads', 'true')
-
-        self.mux.set_property('streamable', 'true')
-        self.sink.set_property('location', '/'.join(
-            [config['output_rtmp_baseurl'], stream_id]))
-
-        self.src.link(self.dec)
-        self.dec.link(self.freeze)
-        self.freeze.link(self.clock)
-        self.clock.link(self.convert)
-        self.convert.link_filtered(
-            self.enc,
-            Gst.caps_from_string(
-                ','.join([
-                    'video/x-raw', 'format=I420',
-                    'framerate={}'.format(
-                        config['output_video_framerate']),
-                    'width={}'.format(
-                        config['output_video_frame_width']),
-                    'height={}'.format(
-                        config['output_video_frame_height']),
-                    'pixel-aspect-ratio=1/1'
-                ])))
-        self.enc.link(self.parse)
+        self.src.link(self.demux)
         self.parse.link(self.mux)
         self.mux.link(self.sink)
 
@@ -115,9 +78,26 @@ class Idler(Thread):
         if self._pipeline.current_state == Gst.State.PLAYING:
             return
 
-        logging.info('idling')
-        self._pipeline.set_state(Gst.State.PAUSED)
+        logging.warning('idling')
         self._pipeline.set_state(Gst.State.PLAYING)
+        self._pipeline.get_state(Gst.CLOCK_TIME_NONE)
+        logging.info('performing initial seek')
+        self._rewind()
+
+    def _rewind(self):
+        # issue seek to restart playback
+        logging.debug('performing rewind seek')
+        self._pipeline.seek(
+            1.0,
+            Gst.Format.TIME,
+            Gst.SeekFlags.SEGMENT,
+            Gst.SeekType.SET, 0,
+            Gst.SeekType.NONE, 0
+        )
+
+    def _postroll(self):
+        self._pipeline.set_state(Gst.State.NULL)
+        self._mainloop.quit()
 
     def _stop(self):
         if self._pipeline.current_state == Gst.State.NULL:
@@ -126,55 +106,7 @@ class Idler(Thread):
         logging.debug('deidling')
         self._postroll()
 
-    def _postroll(self):
-        self._pipeline.set_state(Gst.State.NULL)
-        self._mainloop.quit()
-
     # BUS MESSAGE HANDLERS
-
-    def _on_eos(self, bus, msg):
-        logging.debug('reached end of stream')
-        self._postroll()
-
-    def _on_error(self, bus, msg):
-        gerror, debug = msg.parse_error()
-        out = ''
-        if gerror:
-            out += str(gerror)
-        if debug:
-            out += ': {}'.format(str(gerror.message))
-        if len(out):
-            logging.critical('fatal error: {}'.format(out))
-        self._stop()
-
-    def _on_warning(self, bus, msg):
-        # copies; free with GLib.Error.free() and GLib.free())
-        gerror, debug = msg.parse_warning()
-        out = ''
-        if gerror:
-            out += str(gerror)
-        if debug:
-            out += ': {}'.format(str(gerror.message))
-        if len(out):
-            logging.error(
-                'warning from {}: {}'.format(msg.src.get_name(), out))
-
-    def _on_clock_lost(self, bus, msg):
-        logging.warning('clock lost; restarting playback')
-        self._pipeline.set_state(Gst.State.PAUSED)
-        self._pipeline.set_state(Gst.State.PLAYING)
-
-    def _on_latency(self, bus, msg):
-        logging.debug('redistributing latency')
-        self._pipeline.recalculate_latency()
-
-    def _on_request_state(self, bus, msg):
-        state = msg.parse_request_state()
-        source_name = msg.src.get_name()
-        logging.debug(
-            'state {} requested by {}'.format(
-                state.value_nick, source_name))
-        self._pipeline.set_state(state)
 
     def _on_application(self, bus, msg):
         # pointer; don't free
@@ -183,6 +115,17 @@ class Idler(Thread):
         if structure.has_name('GstLaunchInterrupt'):
             logging.warning('caught interrupt; stopping pipeline')
             self.kill()
+
+    def _on_segment_done(self, bus, msg):
+        self._rewind()
+
+    # SIGNAL HANDLERS
+
+    def _on_pad_added(self, element, pad):
+        string = pad.query_caps(None).to_string()
+        logging.debug('pad added: {}'.format(string))
+        if pad.name == 'video_0':
+            pad.link(self.parse.get_static_pad('sink'))
 
     # PUBLIC METHODS
 
@@ -220,114 +163,6 @@ class Idler(Thread):
             return False
 
 
-class AudioEncoder(Gst.Bin):
-
-    def __init__(self, config):
-        super(AudioEncoder, self).__init__()
-
-        # create elements
-        in_queue = Gst.ElementFactory.make('queue', None)
-        resample = Gst.ElementFactory.make('audioresample', None)
-        convert = Gst.ElementFactory.make('audioconvert', None)
-        rate = Gst.ElementFactory.make('audiorate', None)
-        enc = Gst.ElementFactory.make('lamemp3enc', None)
-        parse = Gst.ElementFactory.make('mpegaudioparse', None)
-        out_queue = Gst.ElementFactory.make('queue', None)
-
-        # add elements
-        self.add(in_queue)
-        self.add(resample)
-        self.add(convert)
-        self.add(rate)
-        self.add(enc)
-        self.add(parse)
-        self.add(out_queue)
-
-        in_queue.set_property('flush-on-eos', 'true')
-
-        enc.set_property('target', 1)
-        enc.set_property('bitrate', config['output_audio_bitrate'])
-        enc.set_property('cbr', 'true')
-
-        out_queue.set_property('flush-on-eos', 'true')
-
-        in_queue.link(resample)
-        resample.link(convert)
-        convert.link(rate)
-        rate.link_filtered(
-            enc,
-            Gst.caps_from_string(
-                ','.join([
-                    'audio/x-raw',
-                    'rate={}'.format(config['output_audio_samplerate']),
-                    'channels={}'.format(
-                        config['output_audio_channels'])
-                ])))
-        enc.link(parse)
-        parse.link(out_queue)
-
-        self.add_pad(
-            Gst.GhostPad.new('sink', in_queue.get_static_pad('sink')))
-        self.add_pad(
-            Gst.GhostPad.new('src', out_queue.get_static_pad('src')))
-
-
-class VideoEncoder(Gst.Bin):
-
-    def __init__(self, config):
-        super(VideoEncoder, self).__init__()
-
-        in_queue = Gst.ElementFactory.make('queue', None)
-        rate = Gst.ElementFactory.make('videorate', None)
-        scale = Gst.ElementFactory.make('videoscale', None)
-        convert = Gst.ElementFactory.make('videoconvert', None)
-        enc = Gst.ElementFactory.make('x264enc', None)
-        parse = Gst.ElementFactory.make('h264parse', None)
-        out_queue = Gst.ElementFactory.make('queue', None)
-
-        self.add(in_queue)
-        self.add(rate)
-        self.add(scale)
-        self.add(convert)
-        self.add(enc)
-        self.add(parse)
-        self.add(out_queue)
-
-        in_queue.set_property('flush-on-eos', 'true')
-
-        scale.set_property('add-borders', 'true')
-        enc.set_property('tune', 'fastdecode')
-        enc.set_property('bitrate', config['output_video_bitrate'])
-        enc.set_property('bframes', 0)
-        enc.set_property('sliced-threads', 'true')
-
-        out_queue.set_property('flush-on-eos', 'true')
-
-        in_queue.link(rate)
-        rate.link(scale)
-        scale.link(convert)
-        convert.link_filtered(
-            enc,
-            Gst.caps_from_string(
-                ','.join([
-                    'video/x-raw', 'format=I420',
-                    'framerate={}'.format(
-                        config['output_video_framerate']),
-                    'width={}'.format(
-                        config['output_video_frame_width']),
-                    'height={}'.format(
-                        config['output_video_frame_height']),
-                    'pixel-aspect-ratio=1/1'
-                ])))
-        enc.link(parse)
-        parse.link(out_queue)
-
-        self.add_pad(
-            Gst.GhostPad.new('sink', in_queue.get_static_pad('sink')))
-        self.add_pad(
-            Gst.GhostPad.new('src', out_queue.get_static_pad('src')))
-
-
 class Player(Thread):
 
     def __init__(
@@ -340,13 +175,18 @@ class Player(Thread):
     ):
         super(Player, self).__init__()
 
+        # params
+
         self._config = config
         self._state = state
         self._live_source = live_source
 
-        self._mainloop = GObject.MainLoop()
+        # mainloop and pipeline
 
-        self._pipeline = Gst.Pipeline()
+        self._mainloop = GLib.MainLoop()
+        self._pipeline = Gst.Pipeline('playerpipeline')
+
+        # bus
 
         bus = self._pipeline.get_bus()
         bus.add_signal_watch()
@@ -359,60 +199,132 @@ class Player(Thread):
         bus.connect('message::request-state', self._on_request_state)
         bus.connect('message::application', self._on_application)
 
-        self._httpsrc = Gst.ElementFactory.make('souphttpsrc', None)
-        self._dec = Gst.ElementFactory.make('decodebin', None)
-        self._video = VideoEncoder(self._config)
-        self._audio = AudioEncoder(self._config)
+        # makes
+
+        self._decodebin = Gst.ElementFactory.make(
+            'uridecodebin', 'playerdecodebin')
+
+        self._video_raw_queue = Gst.ElementFactory.make(
+            'queue', 'rawvideoqueue')
+        self._video_rate = Gst.ElementFactory.make('videorate', None)
+        self._video_scale = Gst.ElementFactory.make('videoscale', None)
+        self._video_convert = Gst.ElementFactory.make('videoconvert', None)
+        self._video_enc = Gst.ElementFactory.make('x264enc', None)
+        self._video_parse = Gst.ElementFactory.make('h264parse', None)
+
+        self._audio_raw_queue = Gst.ElementFactory.make(
+            'queue', 'rawaudioqueue')
+        self._audio_resample = Gst.ElementFactory.make('audioresample', None)
+        self._audio_convert = Gst.ElementFactory.make('audioconvert', None)
+        self._audio_rate = Gst.ElementFactory.make('audiorate', None)
+        self._audio_enc = Gst.ElementFactory.make('lamemp3enc', None)
+        self._audio_parse = Gst.ElementFactory.make('mpegaudioparse', None)
+
         self._mux = Gst.ElementFactory.make('flvmux', None)
         self._sink = Gst.ElementFactory.make('rtmpsink', None)
 
-        self._pipeline.add(self._httpsrc)
-        self._pipeline.add(self._dec)
-        self._pipeline.add(self._video)
-        self._pipeline.add(self._audio)
+        # adds
+
+        self._pipeline.add(self._decodebin)
+
+        self._pipeline.add(self._video_raw_queue)
+        self._pipeline.add(self._video_rate)
+        self._pipeline.add(self._video_scale)
+        self._pipeline.add(self._video_convert)
+        self._pipeline.add(self._video_enc)
+        self._pipeline.add(self._video_parse)
+
+        self._pipeline.add(self._audio_raw_queue)
+        self._pipeline.add(self._audio_resample)
+        self._pipeline.add(self._audio_convert)
+        self._pipeline.add(self._audio_rate)
+        self._pipeline.add(self._audio_enc)
+        self._pipeline.add(self._audio_parse)
+
         self._pipeline.add(self._mux)
         self._pipeline.add(self._sink)
 
-        if self._live_source:
-            self._httpsrc.set_property('is-live', 'true')
-        self._httpsrc.set_property('http-log-level', 'none')
-        self._httpsrc.set_property('location', media_uri)
-        self._httpsrc.set_property('ssl-strict', 'false')
-        self._dec.set_property('use-buffering', 'true')
-        self._dec.set_property('low-percent', 10)
-        self._dec.set_property('high-percent', 99)
-        self._dec.set_property(
-            'max-size-bytes', self._config['decode_buffer_size'])
+        # properties
+
+        self._decodebin.set_property(
+            'connection-speed', config['connection_speed'])
+        self._decodebin.set_property('uri', media_uri)
+        self._decodebin.set_property('use-buffering', 'true')
+
+        self._video_raw_queue.set_property('flush-on-eos', 'true')
+        self._video_scale.set_property('add-borders', 'true')
+        self._video_enc.set_property('bframes', 0)
+        self._video_enc.set_property('bitrate', config['output_video_bitrate'])
+        self._video_enc.set_property('tune', 'fastdecode')
+
+        self._audio_raw_queue.set_property('flush-on-eos', 'true')
+        self._audio_enc.set_property('target', 1)
+        self._audio_enc.set_property('bitrate', config['output_audio_bitrate'])
+        self._audio_enc.set_property('cbr', 'true')
+
         self._mux.set_property('streamable', 'true')
         self._sink.set_property('location', '/'.join(
             [self._config['output_rtmp_baseurl'], stream_id]))
 
-        self._dec.connect('pad-added', self._on_pad_added)
+        # connect, link
 
-        self._httpsrc.link(self._dec)
+        # decode linked to raw queues as pads are added
+        self._decodebin.connect('pad-added', self._on_pad_added)
 
-        # dec gets linked to muxer as pads are added (in _on_pad_added)
-        # audio/video get linked to muxer when we get pads later on
+        self._video_raw_queue.link(self._video_rate)
+        self._video_rate.link(self._video_scale)
+        self._video_scale.link(self._video_convert)
+        self._video_convert.link_filtered(
+            self._video_enc,
+            Gst.caps_from_string(
+                ','.join([
+                    'video/x-raw', 'format=I420',
+                    'framerate={}'.format(
+                        config['output_video_framerate']),
+                    'width={}'.format(
+                        config['output_video_frame_width']),
+                    'height={}'.format(
+                        config['output_video_frame_height']),
+                    'pixel-aspect-ratio=1/1'
+                ])))
+        self._video_enc.link(self._video_parse)
+        self._video_parse.link(self._mux)
+
+        self._audio_raw_queue.link(self._audio_resample)
+        self._audio_resample.link(self._audio_convert)
+        self._audio_convert.link(self._audio_rate)
+        self._audio_rate.link_filtered(
+            self._audio_enc,
+            Gst.caps_from_string(
+                ','.join([
+                    'audio/x-raw',
+                    'rate={}'.format(config['output_audio_samplerate']),
+                    'channels={}'.format(
+                        config['output_audio_channels'])
+                ])))
+        self._audio_enc.link(self._audio_parse)
+        self._audio_parse.link(self._mux)
+
         self._mux.link(self._sink)
 
-        # state
+        # states
         self._is_buffering = False
 
     # INTERNAL CONTROL METHODS
 
     def _play(self):
-        if (self._pipeline.current_state == Gst.State.PAUSED or
-                self._pipeline.current_state == Gst.State.PLAYING):
-            return
-
-        logging.info('playing media')
-
-        logging.debug('pausing pipeline for preroll')
-        self._pipeline.set_state(Gst.State.PAUSED)
-        logging.debug('prerolled; pipeline paused')
+        if self._pipeline.current_state not in (
+                Gst.State.PAUSED, Gst.State.PLAYING):
+            logging.info('playing media')
+            logging.debug('pausing pipeline for preroll')
+            self._pipeline.set_state(Gst.State.PAUSED)
+            logging.debug('prerolled; pipeline paused')
 
     def _postroll(self):
-        self._pipeline.set_state(Gst.State.NULL)
+        if self._pipeline != Gst.State.NULL:
+            logging.debug('nulling pipeline')
+            self._pipeline.set_state(Gst.State.NULL)
+
         self._mainloop.quit()
 
     def _stop(self):
@@ -429,7 +341,7 @@ class Player(Thread):
         position = 0
 
         if pos_result:
-            position = long(pos_ns / Gst.SECOND)
+            position = int(pos_ns // Gst.SECOND)
 
         return position
 
@@ -442,19 +354,21 @@ class Player(Thread):
         (position, duration) = (0, 0)
 
         if pos_result:
-            position = long(pos_ns / Gst.SECOND)
+            position = int(pos_ns // Gst.SECOND)
         if dur_result:
-            duration = long(dur_ns / Gst.SECOND)
+            duration = int(dur_ns // Gst.SECOND)
 
         return [position, duration]
 
     def _seek(self, secs):
-        dur_result, dur_ns = self._pipeline.query_duration(
+        # dur_result, dur_ns = self._pipeline.query_duration(
+        dur_result, dur_ns = self._decodebin.query_duration(
             Gst.Format.TIME)
         if not dur_result:
             return False
 
-        pos_result, pos_ns = self._pipeline.query_position(
+        # pos_result, pos_ns = self._pipeline.query_position(
+        pos_result, pos_ns = self._decodebin.query_position(
             Gst.Format.TIME)
         if not pos_result:
             return False
@@ -466,12 +380,15 @@ class Player(Thread):
 
         logging.info(
             'seeking {} secs (to {} s)'.format(
-                secs, seek_to / Gst.SECOND))
+                secs, seek_to // Gst.SECOND))
 
-        seek_result = self._dec.seek_simple(
-            Gst.Format.TIME,
-            Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT | Gst.SeekFlags.SKIP,
-            seek_to
+        seek_result = self._decodebin.seek_simple(
+            Gst.Format.TIME, Gst.SeekFlags.SEGMENT, seek_to
+            # Gst.Format.TIME, Gst.SeekFlags.NONE, seek_to
+            # Gst.Format.TIME, Gst.SeekFlags.KEY_UNIT | Gst.SeekFlags.SKIP, seek_to
+            # Gst.Format.TIME,
+            # Gst.SeekFlags.KEY_UNIT | Gst.SeekFlags.SKIP | Gst.SeekFlags.FLUSH,
+            # seek_to
         )
 
         return seek_result
@@ -550,14 +467,9 @@ class Player(Thread):
         string = pad.query_caps(None).to_string()
         logging.debug('pad added: {}'.format(string))
         if string.startswith('audio/'):
-            # check if audioencoder in the pipeline
-            pad.link(self._audio.get_static_pad('sink'))
-            if not self._audio.get_static_pad('src').is_linked():
-                self._audio.link(self._mux)
+            pad.link(self._audio_raw_queue.get_static_pad('sink'))
         elif string.startswith('video/'):
-            pad.link(self._video.get_static_pad('sink'))
-            if not self._video.get_static_pad('src').is_linked():
-                self._video.link(self._mux)
+            pad.link(self._video_raw_queue.get_static_pad('sink'))
 
     # PUBLIC METHODS
 
@@ -612,7 +524,7 @@ class Player(Thread):
 def main():
     # write PID to file
     with open('player_pidfile', 'w') as pidfile:
-        print >>pidfile, getpid()
+        print(getpid(), file=pidfile)
 
     # check length of arguments;
     # 1 = error, 2 = idle, 3 = media, 4 = media w/modifier
@@ -639,7 +551,7 @@ def main():
         global_config = load_yaml(config_file)
         logging.info('configuration file loaded and parsed.')
 
-        if type(global_config) is not dict:
+        if not isinstance(global_config, dict):
             logging.critical(
                 'error: configuration file parsed into invalid type.')
             sys_exit(2)
@@ -715,7 +627,7 @@ def main():
 
     # set up listener for comms with bot
     address = global_config['control_socket_file']
-    listener = Listener(address, authkey='phoebe')
+    listener = Listener(address, authkey=b'phoebe')
 
     # block on connection from bot
     logging.debug(
