@@ -1,9 +1,10 @@
 # from imp import load_source
+from __future__ import absolute_import
 from json import loads
 from re import search
 from subprocess import CalledProcessError, check_output
 from time import time
-from urlparse import urlparse, ParseResult
+from six.moves.urllib.parse import urlparse, ParseResult
 
 
 class RequestTypes:
@@ -177,7 +178,7 @@ class PlayRequest:
 
         if 'title' in media_info:
             if len(media_info['title']):
-                self.title = media_info['title'].encode('utf-8')
+                self.title = media_info['title']
         if 'duration' in media_info:
             if media_info['duration'] > 0:
                 self.duration = media_info['duration']

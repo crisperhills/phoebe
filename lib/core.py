@@ -1,3 +1,5 @@
+from __future__ import division
+from __future__ import absolute_import
 from . import commands, events
 from .utils import PlayRequest, RequestTypes
 from circuits import BaseComponent, handler, Timer
@@ -12,7 +14,7 @@ from requests.exceptions import (
     ConnectionError, SSLError as ReqSSLError, Timeout as HTTPTimeout)
 from subprocess import Popen
 from time import sleep, time
-from urlparse import urlparse
+from six.moves.urllib.parse import urlparse
 import logging
 
 
@@ -106,7 +108,7 @@ class ICHCAPI(BaseComponent):
                     action[0] == 'recv' and
                     self.shm['state']['ICHCAPI']['last_action'] == 'recv' and
                     self.shm['state']['ICHCAPI']['empty_recvs'] > (int(
-                        self.config['api_throttle_idle_timeout'] /
+                        self.config['api_throttle_idle_timeout'] //
                         self.config['polling_interval']) - 1)
                 ):
                     delay = self.shm['state']['ICHCAPI']['last_interval']
@@ -192,7 +194,7 @@ class ICHCAPI(BaseComponent):
         if query_type == 'join':
             self.shm['state']['ICHCAPI']['join_lock'] = False
 
-        response_text = content.replace('\r', '').split('\n')
+        response_text = content.decode().replace('\r', '').split('\n')
 
         for idx, line in enumerate(response_text):
             # all responses must start with OK
@@ -634,7 +636,7 @@ class PlayerManager(BaseComponent):
 
             if request.prepared:
 
-                logging.info(
+                logging.warning(
                     'queuing request: "{}" (page: {} | media: {})'.format(
                         request.title, request.request_uri, request.media_uri
                     ))
@@ -694,7 +696,7 @@ class PlayerManager(BaseComponent):
 
                     self.player_mode = 'idle'
                     self.player_process = Popen([
-                        '/usr/bin/python2', 'bin/play.py', self.stream_id
+                        '/usr/bin/python3', 'bin/play.py', self.stream_id
                     ])
                 else:
                     # pop next request from queue
@@ -733,7 +735,7 @@ class PlayerManager(BaseComponent):
 
                         self.player_mode = 'media'
                         self.player_process = Popen([
-                            '/usr/bin/python2',
+                            '/usr/bin/python3',
                             'bin/play.py',
                             self.stream_id,
                             self.current_request.media_uri
@@ -764,7 +766,7 @@ class PlayerManager(BaseComponent):
                             playback_error = True
                     else:
                         # send play command to new player process, via client
-                        self.player_client = Client(address, authkey='phoebe')
+                        self.player_client = Client(address, authkey=b'phoebe')
 
                         try:
                             self.player_client.send(['play'])

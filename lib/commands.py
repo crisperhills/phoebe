@@ -1,6 +1,8 @@
+from __future__ import absolute_import
 from . import events
 from circuits import BaseComponent, Event, handler
 from re import match, search
+import six
 
 
 class c_hello(Event):
@@ -103,7 +105,7 @@ class CommandExecutor(BaseComponent):
     def _get_allowed_commands(self, sender):
         permissions = self.shm['permissions']
         permitted = list()
-        if sender in permissions['users'].keys():
+        if sender in list(permissions['users'].keys()):
             # add explicitly-granted permissions
             for member_group in permissions['users'][sender]['groups']:
                 permitted += permissions['groups'][member_group]
@@ -123,14 +125,14 @@ class CommandExecutor(BaseComponent):
     @handler('c_commands')
     def _cmd_commands(self, sender, command, arguments):
         c_events = dict()
-        for c_name, obj in globals().iteritems():
+        for c_name, obj in six.iteritems(globals()):
             if c_name[:2].lower() == 'c_':
                 c_events[c_name] = obj
 
         outlines = list()
 
         help_commands = list()
-        for c_name, obj in c_events.iteritems():
+        for c_name, obj in six.iteritems(c_events):
             name = c_name[2:]
             if hasattr(obj, 'restricted'):
                 help_commands.append('{}*'.format(name))
@@ -179,7 +181,7 @@ class CommandExecutor(BaseComponent):
     @handler('c_help')
     def _cmd_help(self, sender, command, arguments):
         c_events = dict()
-        for c_name, obj in globals().iteritems():
+        for c_name, obj in six.iteritems(globals()):
             if c_name[:2].lower() == 'c_':
                 c_events[c_name] = obj
 
@@ -204,7 +206,7 @@ class CommandExecutor(BaseComponent):
 
         else:
             event_name = 'c_{}'.format(arguments.replace('!', ''))
-            if event_name in c_events.keys():
+            if event_name in list(c_events.keys()):
                 outlines.append(c_events[event_name].help_text)
 
         if len(outlines):
@@ -404,8 +406,8 @@ class CommandExecutor(BaseComponent):
     def _cmd_stats(self, sender, command, arguments):
         if self._allowed(sender, 'stats'):
             pretty_stats = list()
-            for component, stats in self.shm['stats'].iteritems():
-                for stat, value in stats.iteritems():
+            for component, stats in six.iteritems(self.shm['stats']):
+                for stat, value in six.iteritems(stats):
                     pretty_stats.append(
                         '**{}**: {}'.format(
                             stat.replace('_', ' '),

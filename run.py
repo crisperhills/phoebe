@@ -1,4 +1,6 @@
-#!/usr/bin/python2
+#!/usr/bin/python3
+from __future__ import absolute_import
+from __future__ import print_function
 from circuits import BaseComponent, handler
 from lib.commands import CommandExecutor
 from lib.core import PlayerManager, MessageProcessor, ICHCAPI
@@ -10,10 +12,11 @@ from socket import error as socket_error, socket, AF_UNIX, SOCK_DGRAM
 from sys import exit as sys_exit
 from yaml import safe_load as load_yaml
 import logging
+from io import open
 
 '''phoebe'''
 PROCTITLE = 'phoebe'
-VERSION = 'v2.3.3'
+VERSION = 'v2.4.0'
 
 logging.basicConfig(
     filename='phoebe.log',
@@ -100,7 +103,7 @@ class Phoebe(BaseComponent):
 def main():
     # create pidfile
     with open('pidfile', 'w') as pidfile:
-        print >>pidfile, getpid()
+        print(getpid(), file=pidfile)
 
     # import config
     config = None
@@ -108,7 +111,7 @@ def main():
         config = load_yaml(config_file)
         logging.info('configuration file loaded and parsed.')
 
-        if type(config) is not dict:
+        if not isinstance(config, dict):
             logging.critical(
                 'error: configuration file parsed into invalid type.'
             )
@@ -143,7 +146,7 @@ def main():
         permissions = load_yaml(permissions_file)
         logging.info('permissions file loaded and parsed.')
 
-        if type(permissions) is not dict:
+        if not isinstance(permissions, dict):
             logging.critical(
                 'error: permissions file parsed into invalid type.'
             )
