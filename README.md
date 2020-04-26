@@ -13,7 +13,7 @@ Plays media from most [sites supported](https://rg3.github.io/youtube-dl/support
 
 ### Installation ###
 
-1. Ensure **Python 2.7+** is installed and updated.
+1. Ensure **Python 3.7+** is installed and updated.
 2. Compile from source and install **gstreamer** for your platform (or install it from packages, if the PyGObject/GLib support mentioned later are included), along with the _base_, _good_, _bad_, and _ugly_ plugin packages, taking care to observe the following requirements when running `./configure`:
     * If compiling from source:
         * Compile all packages with support for **GObject introspection**, and **GLib asserts**.
@@ -22,6 +22,7 @@ Plays media from most [sites supported](https://rg3.github.io/youtube-dl/support
 4. Install **youtube-dl**; take note of where the executable is placed (e.g., `which youtube-dl`)
 5. Create a directory for phoebe to run, then extract the contents of the latest release archive into that directory.
 6. Copy `config.yaml` and `permissions.yaml` from `examples/` and modify them to fit your installation.
+7. Place an h264-encoded idle background video (in an MP4 container) in the root install path, and rename it to `idlebg.mp4`.
 7. Ensure all files in the directory are owned by the same user that will run the application.
 8. Run phoebe with `./run.py`, or see the `systemd` directory for more information on setting up the bot as a service.
 
@@ -61,16 +62,12 @@ Plays media from most [sites supported](https://rg3.github.io/youtube-dl/support
     - OpenSSL
     - requests
     - yaml
-+ Gstreamer 1.4.5+, compiled with support for GObject introspection, with non-base elements:
++ Gstreamer 1.14+, compiled with support for GObject introspection, with non-base elements:
     - flvmux
     - h264parse
-    - imagefreeze
     - lamemp3enc
     - mpegaudioparse
-    - multifilesrc
-    - pngdec
     - rtmpsink
-    - souphttpsrc
     - x264enc
 + youtube-dl, kept up to date
 
